@@ -12,7 +12,8 @@ from pkg_resources import packaging
 import functools
 import hydra
 import torch
-import torch.cuda.nccl as nccl
+import torch_npu
+# import torch.cuda.nccl as nccl
 import torch.distributed as dist
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -184,11 +185,11 @@ def train(
             for step, batch in enumerate(train_dataloader):
                 for key in batch.keys():
                     batch[key] = (
-                        batch[key].to(local_rank).half()
+                        batch[key].to(f"npu:{local_rank}").half()
                         if isinstance(batch[key], torch.Tensor)
                         and batch[key].dtype == torch.float32
                         else (
-                            batch[key].to(local_rank)
+                            batch[key].to(f"npu:{local_rank}")
                             if isinstance(batch[key], torch.Tensor)
                             else batch[key]
                         )
@@ -421,10 +422,10 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
         for step, batch in enumerate(eval_dataloader):
             for key in batch.keys():
                 batch[key] = (
-                    batch[key].to(local_rank).half()
+                    batch[key].to(f"npu:{local_rank}").half()
                     if isinstance(batch[key], torch.Tensor) and batch[key].dtype==torch.float32
                     else (
-                        batch[key].to(local_rank) if isinstance(batch[key], torch.Tensor) else batch[key]
+                        batch[key].to(f"npu:{local_rank}") if isinstance(batch[key], torch.Tensor) else batch[key]
                     )
                 )
             # Ensure no gradients are computed for this scope to save memory

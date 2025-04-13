@@ -21,6 +21,7 @@ train_config:
   val_batch_size: 6
   num_workers_dataloader: 2
   output_dir: /aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/exp-20250413
+deepspeed_config: /aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json
 model_config:
   llm_name: vicuna-7b-v1.5
   llm_path: /aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/vicuna-7b-v1.5

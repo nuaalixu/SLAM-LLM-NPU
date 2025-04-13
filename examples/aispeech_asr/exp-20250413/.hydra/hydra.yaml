@@ -116,6 +116,7 @@ hydra:
     - ++train_config.enable_fsdp=false
     - ++train_config.enable_ddp=true
     - ++train_config.use_fp16=true
+    - ++deepspeed_config=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json
     - ++model_config.llm_name=vicuna-7b-v1.5
     - ++model_config.llm_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/vicuna-7b-v1.5
     - ++model_config.llm_dim=4096
@@ -144,9 +145,9 @@ hydra:
     - ++train_config.output_dir=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/exp-20250413
     - ++metric=acc
   job:
-    name: finetune_mala_asr
+    name: finetune_mala_asr_deepspeed
     chdir: null
-    override_dirname: ++dataset_config.dataset=slidespeech_dataset,++dataset_config.input_type=raw,++dataset_config.normalize=true,++dataset_config.use_ocr=true,++metric=acc,++model_config.encoder_dim=1024,++model_config.encoder_name=wavlm,++model_config.encoder_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/wavlm/WavLM-Large.pt,++model_config.encoder_projector=cov1d-linear,++model_config.encoder_projector_ds_rate=5,++model_config.llm_dim=4096,++model_config.llm_name=vicuna-7b-v1.5,++model_config.llm_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/vicuna-7b-v1.5,++model_config.normalize=true,++train_config.batch_size_training=6,++train_config.batching_strategy=custom,++train_config.enable_ddp=true,++train_config.enable_fsdp=false,++train_config.freeze_encoder=true,++train_config.freeze_llm=true,++train_config.lr=5e-5,++train_config.model_name=mala_asr,++train_config.num_epochs=5,++train_config.num_workers_dataloader=2,++train_config.output_dir=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/exp-20250413,++train_config.total_steps=110000,++train_config.use_fp16=true,++train_config.val_batch_size=6,++train_config.validation_interval=2000,++train_config.warmup_steps=1000
+    override_dirname: ++dataset_config.dataset=slidespeech_dataset,++dataset_config.input_type=raw,++dataset_config.normalize=true,++dataset_config.use_ocr=true,++deepspeed_config=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json,++metric=acc,++model_config.encoder_dim=1024,++model_config.encoder_name=wavlm,++model_config.encoder_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/wavlm/WavLM-Large.pt,++model_config.encoder_projector=cov1d-linear,++model_config.encoder_projector_ds_rate=5,++model_config.llm_dim=4096,++model_config.llm_name=vicuna-7b-v1.5,++model_config.llm_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/vicuna-7b-v1.5,++model_config.normalize=true,++train_config.batch_size_training=6,++train_config.batching_strategy=custom,++train_config.enable_ddp=true,++train_config.enable_fsdp=false,++train_config.freeze_encoder=true,++train_config.freeze_llm=true,++train_config.lr=5e-5,++train_config.model_name=mala_asr,++train_config.num_epochs=5,++train_config.num_workers_dataloader=2,++train_config.output_dir=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/exp-20250413,++train_config.total_steps=110000,++train_config.use_fp16=true,++train_config.val_batch_size=6,++train_config.validation_interval=2000,++train_config.warmup_steps=1000
     id: ???
     num: ???
     config_name: prompt.yaml

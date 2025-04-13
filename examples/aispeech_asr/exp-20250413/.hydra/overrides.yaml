@@ -1,6 +1,7 @@
 - ++train_config.enable_fsdp=false
 - ++train_config.enable_ddp=true
 - ++train_config.use_fp16=true
+- ++deepspeed_config=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json
 - ++model_config.llm_name=vicuna-7b-v1.5
 - ++model_config.llm_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/vicuna-7b-v1.5
 - ++model_config.llm_dim=4096
