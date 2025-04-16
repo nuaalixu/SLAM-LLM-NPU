@@ -1,26 +1,27 @@
 #!/bin/bash
 # export PYTHONPATH=/root/whisper:$PYTHONPATH
 export PYTHONPATH=/root/fairseq:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=0,1
 export TOKENIZERS_PARALLELISM=false
 # export CUDA_LAUNCH_BLOCKING=1
 export OMP_NUM_THREADS=1
+export PATH=$PATH:~/../lihaoyu/tools/miniconda3/bin      # ffmpeg
 
 # debug setting for multiple gpus
 # export NCCL_DEBUG=INFO
 # export NCCL_DEBUG_SUBSYS=ALL
 # export TORCH_DISTRIBUTED_DEBUG=INFO
 
-run_dir=/root/SLAM-LLM
-cd $run_dir
-code_dir=examples/asr_librispeech
+speech_encoder_path=~/../lihaoyu/models/Whisper/large-v3.pt
+llm_path=~/../lihaoyu/models/vicuna-7b-v1.5
+train_data_path=~/../lihaoyu/datasets/LibriSpeech/formats/slam-llm_asr/dev-clean.json #/nfs/maziyang.mzy/data/librispeech/librispeech_train_960h.jsonl
+val_data_path=~/../lihaoyu/datasets/LibriSpeech/formats/slam-llm_asr/dev-clean.json #/nfs/maziyang.mzy/data/librispeech/librispeech_dev_other.jsonl
 
-speech_encoder_path=/nfs/maziyang.mzy/models/Whisper/large-v3.pt
-llm_path=/nfs/maziyang.mzy/models/vicuna-7b-v1.5
-train_data_path=/nfs/maziyang.mzy/data/librispeech/librispeech_train_960h.jsonl
-val_data_path=/nfs/maziyang.mzy/data/librispeech/librispeech_dev_other.jsonl
+output_dir=exp/whisper-large-v3_linear_vicuna-7b-v1.5 #$(date +"%Y%m%d")
+npus=1
 
-output_dir=/root/tmp/vicuna-7b-v1.5-librispeech-linear-steplrwarmupkeep1e-4-whisper-largev3-$(date +"%Y%m%d")
+. ~/../lihaoyu/tools/scripts/parse_options.sh
+
+export ASCEND_VISIBLE_DEVICES=$(seq -s ',' 0 $((npus - 1)))
 
 hydra_args="
 hydra.run.dir=$output_dir \
@@ -51,11 +52,17 @@ hydra.run.dir=$output_dir \
 ++train_config.num_workers_dataloader=2 \
 ++train_config.output_dir=$output_dir \
 ++metric=acc \
+++log_config.wandb_dir=$output_dir \
+++log_config.log_file=$output_dir/train.log \
+++dataset_config.file=slam_llm/datasets/speech_dataset.py:get_speech_dataset \
+++model_config.file=slam_llm/models/slam_model.py:model_factory \
 "
 
 # -m debugpy --listen 5678 --wait-for-client
-if [[ $CUDA_VISIBLE_DEVICES != *","* ]]; then
-    python -m debugpy --listen 5678 --wait-for-client $code_dir/finetune_asr.py \
+# if [[ $ASCEND_VISIBLE_DEVICES != *","* ]]; then
+if [[ ${npus} == 1 ]]; then
+    # python -m debugpy --listen 5678 --wait-for-client finetune_asr.py \
+    python finetune_asr.py \
         --config-path "conf" \
         --config-name "prompt.yaml" \
         $hydra_args
@@ -64,7 +71,7 @@ else
         --nnodes 1 \
         --nproc_per_node 2 \
         --master_port=29503 \
-        $code_dir/finetune_asr.py \
+        finetune_asr.py \
         --config-path "conf" \
         --config-name "prompt.yaml" \
         ++train_config.enable_fsdp=false \
