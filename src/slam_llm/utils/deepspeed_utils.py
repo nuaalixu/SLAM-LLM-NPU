@@ -174,13 +174,11 @@ def train(
             model.train()
             total_loss = 0.0
             total_acc = 0.0
-            total_length = len(train_dataloader) // gradient_accumulation_steps
-            pbar = tqdm(
-                colour="blue",
-                desc=f"Training Epoch: {epoch+1}",
-                total=total_length,
-                dynamic_ncols=True,
-            )
+            if train_config.batching_strategy != "dynamic":
+                total_length = len(train_dataloader)//gradient_accumulation_steps
+                pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
+            else:
+                pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
                 for key in batch.keys():
                     batch[key] = (
@@ -193,8 +191,8 @@ def train(
                             else batch[key]
                         )
                     )
-                # with autocast():
-                outputs, *rest = model(**batch)
+                with autocast():
+                    outputs, *rest = model(**batch)
                 acc = rest[0] if rest else -1
                 loss = outputs.loss
 
@@ -209,7 +207,7 @@ def train(
                                     "train_inner/train_inner_loss": loss,
                                     "train_inner/train_inner_accuracy": acc,
                                 },
-                                step=(epoch * total_length + step),
+                                step=(epoch * total_length + step) if train_config.batching_strategy != "dynamic" else step + 1,
                             )
                     else:
                         wandb.log(
@@ -217,7 +215,7 @@ def train(
                                 "train_inner/train_inner_loss": loss,
                                 "train_inner/train_inner_accuracy": acc,
                             },
-                            step=(epoch * total_length + step),
+                            step=(epoch * total_length + step) if train_config.batching_strategy != "dynamic" else step + 1,
                         )
 
                 total_loss += loss.detach().float()
@@ -227,17 +225,17 @@ def train(
                 model.backward(loss)
                 model.step()
 
-                if (step + 1) % gradient_accumulation_steps == 0 or step == len(
+                if (step + 1) % gradient_accumulation_steps == 0 or ( train_config.batching_strategy != "dynamic" and  step == len(
                     train_dataloader
-                ) - 1:
+                ) - 1):
                     pbar.update(1)
 
                 pbar.set_description(
-                    f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()}, acc: {acc})"
+                    f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)  if train_config.batching_strategy != 'dynamic' else ''} completed (loss: {loss.detach().float()}, acc: {acc})"
                 )
 
                 if (
-                    (epoch * total_length + step + 1) % train_config.validation_interval
+                    (epoch * total_length + step + 1  if train_config.batching_strategy != "dynamic" else step + 1) % train_config.validation_interval
                     == 0
                     and train_config.run_validation
                 ):
@@ -311,8 +309,8 @@ def train(
         ):
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
             dist.all_reduce(total_acc, op=dist.ReduceOp.SUM)
-        train_epoch_loss = total_loss / len(train_dataloader)
-        train_epoch_acc = total_acc / len(train_dataloader)
+        train_epoch_loss = total_loss / (len(train_dataloader)  if train_config.batching_strategy != "dynamic" else (step + 1)* train_config.num_epochs)
+        train_epoch_acc = total_acc / (len(train_dataloader) if train_config.batching_strategy != "dynamic" else (step + 1)* train_config.num_epochs)
         if train_config.enable_fsdp or train_config.enable_ddp:
             train_epoch_loss = train_epoch_loss / world_size
             train_epoch_acc = train_epoch_acc / world_size
@@ -411,13 +409,11 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
     )  # (Fix:MZY): fix expected scalar type mismatch in norm
 
     with MemoryTrace() as memtrace:
-        total_length = len(eval_dataloader)
-        pbar = tqdm(
-            colour="green",
-            desc=f"Evaluating Epoch",
-            total=total_length,
-            dynamic_ncols=True,
-        )
+        if train_config.batching_strategy != "dynamic":
+            total_length = len(eval_dataloader)
+            pbar = tqdm(colour="green", desc=f"Evaluating Epoch", total=total_length, dynamic_ncols=True)
+        else:
+            pbar = tqdm(colour="green", desc=f"Evaluating Epoch",  dynamic_ncols=True)
         for step, batch in enumerate(eval_dataloader):
             for key in batch.keys():
                 batch[key] = (
@@ -446,7 +442,7 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
             )
             pbar.update(1)
             pbar.set_description(
-                f"step: {step+1}/{total_length}, eval_loss: {eval_loss/(step+1):.4f}, eval_acc: {eval_acc/(step+1):.4f}"
+                f"step: {step+1}/{total_length if train_config.batching_strategy != 'dynamic' else '' }, eval_loss: {eval_loss/(step+1):.4f}, eval_acc: {eval_acc/(step+1):.4f}"
             )
 
     # If there's more than one npu device, reduce evaluation loss across all devices
@@ -457,8 +453,8 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
         dist.all_reduce(eval_acc, op=dist.ReduceOp.SUM)
 
     # Compute average loss and perplexity
-    eval_epoch_loss = eval_loss / len(eval_dataloader)
-    eval_epoch_acc = eval_acc / len(eval_dataloader)
+    eval_epoch_loss = eval_loss / (len(eval_dataloader) if train_config.batching_strategy != "dynamic" else step + 1)
+    eval_epoch_acc = eval_acc / (len(eval_dataloader) if train_config.batching_strategy != "dynamic" else step + 1)
     eval_epoch_loss = eval_epoch_loss / world_size
     eval_epoch_acc = eval_epoch_acc / world_size
     eval_ppl = torch.exp(eval_epoch_loss)
@@ -488,13 +484,13 @@ def check_frozen_layers_peft_model(model):
 
 def setup():
     """Initialize the process group for distributed training"""
-    dist.init_process_group("nccl")
+    dist.init_process_group("hccl")
 
 
 def setup_environ_flags(rank):
     """Set environment flags for debugging purposes"""
     os.environ["TORCH_SHOW_CPP_STACKTRACES"] = str(1)
-    os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
+    os.environ["HCCL_ASYNC_ERROR_HANDLING"] = str(1)
     # os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
     # This flag will help with npu memory fragmentations that can lead into OOM in some cases.
     # Note this is only availble in PyTorch Nighlies (as of July 30 2023)
