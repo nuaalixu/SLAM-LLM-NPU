@@ -59,8 +59,8 @@ def generate_peft_config(train_config):
 
     params = OmegaConf.to_container(config, resolve=True)
     # peft_config = peft_configs[names.index(train_config.peft_method)](**params)
-    params.pop("peft_method", None) #(FIX:MZY): remove peft_method from params to avoid error
-    peft_config = peft_configs[config.get("peft_method", "lora")](**params)
+    peft_method = params.pop("peft_method", "lora") #(FIX:MZY): remove peft_method from params to avoid error
+    peft_config = peft_configs[peft_method](**params)
 
     return peft_config
 
