@@ -26,8 +26,8 @@ use_peft=false # For llm
 use_fp16=true
 freeze_encoder=true
 pad_or_trim=true # For whisper
-
-deepspeed_config=conf/ds_config.json
+# use absolute path
+deepspeed_config=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json
 
 if [[ $use_peft == "true" || $freeze_encoder == false ]];then
     ckpt_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/project/aispeech_asr/exp/slidespeech/20250414/whisper_linear_Qwen2.5-7B-Instruct_lorafalse_padtrue_normal_asr_speedfalse_specaugfalse-1515_slidespeech_text/mala_asr_epoch_2_step_7000

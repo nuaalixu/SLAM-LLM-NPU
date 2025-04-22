@@ -7,7 +7,7 @@ import yaml
 from contextlib import nullcontext
 from pathlib import Path
 from pkg_resources import packaging
-
+import datetime
 
 import functools
 import hydra
@@ -106,7 +106,7 @@ def deepspeed_main_wrapper(
         return decorated_main
 
     return main_decorator
-def slam_join(group_join):
+def deepspeed_join(group_join):
     """
     Copy from wenet:https://github.com/wenet-e2e/wenet/blob/main/wenet/utils/executor.py#L64
     """
@@ -204,6 +204,8 @@ def train(
             else:
                 pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", dynamic_ncols=True)
             for step, batch in enumerate(train_dataloader):
+                if train_config.batching_strategy == "dynamic" and deepspeed_join(group_join):
+                    break
                 for key in batch.keys():
                     batch[key] = (
                         batch[key].to(f"npu:{local_rank}").half()
@@ -215,7 +217,7 @@ def train(
                             else batch[key]
                         )
                     )
-                with autocast():
+                with autocast(dtype=torch.bfloat16):
                     outputs, *rest = model(**batch)
                 acc = rest[0] if rest else -1
                 loss = outputs.loss
