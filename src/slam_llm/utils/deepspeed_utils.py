@@ -7,7 +7,7 @@ import yaml
 from contextlib import nullcontext
 from pathlib import Path
 from pkg_resources import packaging
-
+import datetime
 
 import functools
 import hydra
@@ -217,7 +217,7 @@ def train(
                             else batch[key]
                         )
                     )
-                with autocast():
+                with autocast(dtype=torch.bfloat16):
                     outputs, *rest = model(**batch)
                 acc = rest[0] if rest else -1
                 loss = outputs.loss
