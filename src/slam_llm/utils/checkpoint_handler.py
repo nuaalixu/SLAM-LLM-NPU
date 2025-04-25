@@ -170,10 +170,53 @@ def save_model_checkpoint_deepspeed(model, cfg, checkpoint_name="checkpoint"):
     save_dir = os.path.join(cfg.output_dir, checkpoint_name)
     os.makedirs(save_dir, exist_ok=True)
     # save_full_path = os.path.join(save_dir, "model.pt")
-    save_full_path = save_dir
-    model.save_checkpoint(save_dir=save_full_path, exclude_frozen_parameters=True)
+    # add asr_fireredasr's pth_tar saving format
+    if cfg.pth_tar:
+        save_firered_checkpoint_deepspeed(model, cfg, checkpoint_name)
+    else:
+        save_full_path = save_dir
+        model.save_checkpoint(save_dir=save_full_path, exclude_frozen_parameters=True)
     logger.info(f"encoder saved at {save_full_path}")
-      
+
+def save_firered_checkpoint_deepspeed(model, cfg, checkpoint_name="checkpoint"):
+    logger.info(f"--> saving fireredasr-llm ...")
+    save_dir = os.path.join(cfg.output_dir, checkpoint_name)
+    os.makedirs(save_dir, exist_ok=True)
+    save_full_path = save_dir
+    if cfg.enable_ddp:
+        model = model.module
+    model_state_dict = model.state_dict()
+    state_dict = OrderedDict()
+
+    for name, para in model.named_parameters():
+        if para.requires_grad:
+            state_dict[name] = model_state_dict[name]
+        else:
+            if name.startswith("encoder"):
+                state_dict[name] = model_state_dict[name]
+
+    save_full_path = os.path.join(save_dir, "model.pth.tar")
+    # create args, same with fireredasr format
+    import argparse
+    args = argparse.Namespace(
+        encoder_path=save_dir,
+        llm_dir=save_dir,
+        freeze_encoder=cfg.freeze_encoder,
+        freeze_llm=0,
+        use_flash_attn=0,
+        use_fp16=0,
+        use_lora=1,
+        encoder_downsample_rate=2,
+    )
+    # create checkpoint
+    checkpoint = {
+        "model_state_dict": state_dict, 
+        "args": args  
+    }
+
+    # save to .pth.tar
+    torch.save(checkpoint, save_full_path)
+
 def save_model_checkpoint_peft(model, optimizer, rank, cfg, checkpoint_name="checkpoint", save_trainable_only=True):
     logger.info(f"--> saving model ...")
     save_dir = os.path.join(cfg.output_dir, checkpoint_name)
