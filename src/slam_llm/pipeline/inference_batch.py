@@ -98,7 +98,7 @@ def main(kwargs: DictConfig):
 	
 	model_factory = get_custom_model_factory(model_config, logger)
 	model, tokenizer = model_factory(train_config, model_config, **kwargs)
-	device = torch.device("npu" if torch.npu.is_available() else "cpu") # FIX(MZY): put the whole model to device.
+	device = torch.device(f"npu:{train_config.npu_device}" if torch.npu.is_available() else "cpu") # PJ:FIX: put the whole model to a certain npu device.
 	model.to(device)
 	model.eval()
 
@@ -131,7 +131,8 @@ def main(kwargs: DictConfig):
 			for key in batch.keys():
 				batch[key] = batch[key].to(device) if isinstance(batch[key], torch.Tensor) else batch[key]
 			model_outputs = model.generate(**batch)
-			output_text = model.tokenizer.batch_decode(model_outputs, add_special_tokens=False, skip_special_tokens=True)
+			# PJ: Add fireredasr or other models don't have tokenizer
+			output_text = model.tokenizer.batch_decode(model_outputs, add_special_tokens=False, skip_special_tokens=True) if hasattr(model, "tokenizer") else tokenizer.batch_decode(model_outputs, add_special_tokens=False, skip_special_tokens=True)
 			for key, text, target in zip(batch["keys"], output_text, batch["targets"]):
 				pred.write(key + "\t" + text.replace("\n", " ") + "\n")
 				gt.write(key + "\t" + target + "\n")

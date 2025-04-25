@@ -1,2 +1,0 @@
-dataset_config:
-    prompt: "Transcribe the provided audio into accurate text. "

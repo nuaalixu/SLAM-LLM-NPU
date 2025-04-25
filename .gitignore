@@ -15,7 +15,7 @@ data/
 jobs/
 debug/
 audio/
-
+kernel_meta/
 examples/s2s/scripts/debug
 examples/vsr_LRS3/scripts/decode_avhubert_vo_vicuna_7b_noself.sh
 examples/asr_librispeech/scripts/decode_hubert_xtralarge_linear_vicuna_7b_copy.sh
@@ -23,3 +23,7 @@ examples/vsr_LRS3/scripts/decode_avhubert_vo_vicuna_7b_copy.sh
 scripts_all
 examples/hotwords_librispeech
 examples/asr_librispeech/scripts/decode_hubert_xtralarge_linear_vicuna_7b_debug.sh
+**/exp/
+examples/asr_fireredasr/scripts/finetune_fireredasr_deepspeed_nossh.sh
+**/decode_log/
+slam-llm-v1.7.tar
