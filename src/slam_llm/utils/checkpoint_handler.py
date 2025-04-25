@@ -171,12 +171,12 @@ def save_model_checkpoint_deepspeed(model, cfg, checkpoint_name="checkpoint"):
     os.makedirs(save_dir, exist_ok=True)
     # save_full_path = os.path.join(save_dir, "model.pt")
     # add asr_fireredasr's pth_tar saving format
-    if cfg.pth_tar:
+    if getattr(cfg, "pth_tar", False):
         save_firered_checkpoint_deepspeed(model, cfg, checkpoint_name)
     else:
         save_full_path = save_dir
         model.save_checkpoint(save_dir=save_full_path, exclude_frozen_parameters=True)
-    logger.info(f"encoder saved at {save_full_path}")
+        logger.info(f"encoder saved at {save_full_path}")
 
 def save_firered_checkpoint_deepspeed(model, cfg, checkpoint_name="checkpoint"):
     logger.info(f"--> saving fireredasr-llm ...")
@@ -216,6 +216,7 @@ def save_firered_checkpoint_deepspeed(model, cfg, checkpoint_name="checkpoint"):
 
     # save to .pth.tar
     torch.save(checkpoint, save_full_path)
+    logger.info(f"model has been saved at {save_full_path}")
 
 def save_model_checkpoint_peft(model, optimizer, rank, cfg, checkpoint_name="checkpoint", save_trainable_only=True):
     logger.info(f"--> saving model ...")
