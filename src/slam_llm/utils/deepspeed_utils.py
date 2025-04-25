@@ -250,7 +250,6 @@ def train(
                 # deepspeed should handle gradient accumulate
                 model.backward(loss)
                 model.step()
-
                 if (step + 1) % gradient_accumulation_steps == 0 or ( train_config.batching_strategy != "dynamic" and  step == len(
                     train_dataloader
                 ) - 1):
