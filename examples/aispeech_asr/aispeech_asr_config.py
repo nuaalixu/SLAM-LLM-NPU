@@ -4,6 +4,26 @@ from torch.distributed.fsdp import ShardingStrategy
 
 
 @dataclass
+class ConformerConfig:
+    input_size : int = 80
+    activation_type: str = "swish"
+    attention_dropout_rate: float = 0.0
+    attention_heads: int = 12
+    cnn_module_kernel: int = 33
+    cnn_module_norm: str = "layer_norm"
+    dropout_rate: float = 0.1
+    input_layer: str = "conv2d"
+    linear_units: int = 3584
+    normalize_before: bool = True
+    num_blocks: int = 16
+    output_size: int = 768
+    pos_enc_layer_type: str = "rel_pos"
+    positional_dropout_rate: 0.1
+    selfattention_layer_type: str = "rel_selfattn"
+    use_cnn_module: bool = True   
+
+
+@dataclass
 class ModelConfig:
     file: str = "examples/aispeech_asr/model/aispeech_asr.py:model_factory"
     llm_name: str = "vicuna-7b-v1.5"
@@ -12,8 +32,10 @@ class ModelConfig:
     llm_dim: int = 4096
     whisper_decode : Optional[bool] = False
     encoder_name: Optional[str] = None
+    encoder_config: ConformerConfig = field(default_factory=ConformerConfig)  # or None, use wenet_model_path instead
     encoder_ds_rate: int = 2
     encoder_path: Optional[str] = None
+    wenet_model_dir: Optional[str] = None
     encoder_path_hf: Optional[str] = None
     encoder_dim: int = 1280
     encoder_projector: str = "linear"
