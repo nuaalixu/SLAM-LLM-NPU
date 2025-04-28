@@ -1048,8 +1048,6 @@ class ConformerEncoder(nn.Module):
             from dataclasses import asdict
             encoder_conf = asdict(model_config.encoder_config)
             encoder = cls(**encoder_conf)
-            checkpoint = torch.load(model_config.encoder_path, map_location='cpu')
-            encoder.load_state_dict(checkpoint, strict=True)
             return encoder            
 
 
