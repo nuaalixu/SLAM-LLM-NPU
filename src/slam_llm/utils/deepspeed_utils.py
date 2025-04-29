@@ -452,7 +452,7 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
             # Ensure no gradients are computed for this scope to save memory
             with torch.no_grad():
                 # Forward pass and compute loss
-                with autocast():  # (Fix:MZY): fix expected scalar type mismatch in norm
+                with autocast(dtype=torch.bfloat16):  # pj: also in bf16
                     outputs, *rest = model(**batch)
                 acc = rest[0] if rest else -1
                 loss = outputs.loss

@@ -1,5 +1,6 @@
 #!/bin/bash
 # export PYTHONPATH=/root/fairseq:$PYTHONPATH
+# this is for multi-nodes and multi-gpus
 export ASCEND_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export TOKENIZERS_PARALLELISM=false
 export HCCL_CONNECT_TIMEOUT=7200
@@ -110,15 +111,32 @@ if [[ $use_peft == "true" || $freeze_encoder == false ]];then
     hydra_args+="++ckpt_path=$ckpt_path/model.pt"
 fi
 
+HOST_FILE="/tmp/"${JobID}                        #生成的hostfile的完整文件名，$JobID调度系统会自动生成
+SSH_PORT=6666                                    #因调度系统强制普通用户身份起容器，需要将ssh端口指定为大于1024的值
+ 
+gen_hostfile() {                                 #此函数负责生成hostfile, 已跟调度系统对接好，直接使用，不要修改
+    echo "${VC_MASTER_HOSTS} slots=${GPU_PER_TASK}" > ${HOST_FILE}
+    echo "${VC_WORKER_HOSTS}" | awk -F ',' -v gpu_num=$GPU_PER_TASK '{for (i=1; i<=NF; i++) print $i" slots="gpu_num}' >> ${HOST_FILE}
+}
 
-deepspeed \
-    --num_nodes 1 \
-    --num_gpus 8 \
-    $code_dir/finetune_deepspeed.py \
-    --config-path "conf" \
-    --config-name "prompt.yaml" \
-    ++train_config.enable_fsdp=false \
-    ++train_config.enable_ddp=true \
-    ++train_config.use_fp16=$use_fp16 \
-    ++deepspeed_config=$deepspeed_config \
-    ${hydra_args}
+do_train() {
+    cat $HOST_FILE                                     #训练主入口函数
+    /usr/sbin/sshd -p ${SSH_PORT}                #在Rank0上后台启动sshd服务，不要修改
+    deepspeed \
+        --node_rank=$RANK \
+        --master_addr $MASTER_ADDR \
+        --master_port $MASTER_PORT \
+        --hostfile $HOST_FILE \
+        --no_ssh \
+        $code_dir/finetune_deepspeed.py \
+        --config-path "conf" \
+        --config-name "prompt.yaml" \
+        ++train_config.enable_fsdp=false \
+        ++train_config.enable_ddp=true \
+        ++train_config.use_fp16=$use_fp16 \
+        ++deepspeed_config=$deepspeed_config \
+        ${hydra_args}
+}
+ 
+gen_hostfile                                 #生成分布式训练需要的hostfile
+do_train                                     #启动训练
