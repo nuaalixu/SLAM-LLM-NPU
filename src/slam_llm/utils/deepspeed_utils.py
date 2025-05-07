@@ -196,8 +196,8 @@ def train(
         epoch_start_time = time.perf_counter()
         with MemoryTrace() as memtrace:  # track the memory usage
             model.train()
-            total_loss = 0.0
-            total_acc = 0.0
+            total_loss = torch.tensor(0.0).to(f"npu:{local_rank}")
+            total_acc = 0
             if train_config.batching_strategy != "dynamic":
                 total_length = len(train_dataloader)//gradient_accumulation_steps
                 pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
@@ -243,7 +243,6 @@ def train(
                             },
                             step=(epoch * total_length + step) if train_config.batching_strategy != "dynamic" else step + 1,
                         )
-
                 total_loss += loss.detach().float()
                 total_acc += acc
 
@@ -271,7 +270,8 @@ def train(
                     eval_epoch_acc = rest[0] if rest else -1
                     checkpoint_start_time = time.perf_counter()
 
-                    if train_config.save_model and (eval_epoch_loss < best_val_loss):
+                    
+                    if train_config.save_model and (eval_epoch_loss < best_val_loss or eval_epoch_acc > best_val_acc):
                         checkpoint_name = f"{train_config.model_name}_epoch_{str(epoch+1)}_step_{step+1}"
                         save_model_checkpoint_deepspeed(
                             model, train_config, checkpoint_name
@@ -453,7 +453,7 @@ def evaluation(model, train_config, eval_dataloader, local_rank, tokenizer):
             # Ensure no gradients are computed for this scope to save memory
             with torch.no_grad():
                 # Forward pass and compute loss
-                with autocast():  # (Fix:MZY): fix expected scalar type mismatch in norm
+                with autocast(dtype=torch.bfloat16):  # (Fix:MZY): fix expected scalar type mismatch in norm
                     outputs, *rest = model(**batch)
                 acc = rest[0] if rest else -1
                 loss = outputs.loss

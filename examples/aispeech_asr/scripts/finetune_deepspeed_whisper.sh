@@ -13,10 +13,11 @@ run_dir=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM
 cd $run_dir
 code_dir=examples/aispeech_asr
 
+dataset=aishell-1
 train_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/aishell-1/asr/train
 dev_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/aishell-1/asr/dev
-train_max_frame_length=1000
-eval_max_frame_length=1000
+train_max_frame_length=1500
+eval_max_frame_length=3000
 multitask_prompt_path="/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/multiprompt.jsonl"
 # prompt_style="\{\}\\<speech\\>" # "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n" | "USER: {}\n ASSISTANT:"
 projector=linear
@@ -33,10 +34,9 @@ if [[ $use_peft == "true" || $freeze_encoder == false ]];then
 fi
 
 # Choose Encoder
-encoder_name=conformer
-speech_encoder_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/conformer
-encoder_dim=768
-
+encoder_name=whisper
+speech_encoder_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/whisper/large-v3.pt
+encoder_dim=1280
 # Choose LLM
 if [[ $llm_name == "vicuna-7b-v1.5" ]]
 then
@@ -78,12 +78,12 @@ hydra.run.dir=$output_dir \
 ++dataset_config.train_scp_file_path=$train_scp_file_path \
 ++dataset_config.dev_scp_file_path=$dev_scp_file_path \
 ++train_config.model_name=aispeech_asr \
-++train_config.num_epochs=50 \
+++train_config.num_epochs=5 \
 ++train_config.freeze_encoder=$freeze_encoder \
 ++train_config.freeze_llm=true \
 ++train_config.use_peft=$use_peft \
 ++train_config.batching_strategy=dynamic \
-++train_config.validation_interval=500 \
+++train_config.validation_interval=300 \
 ++train_config.num_workers_dataloader=8 \
 ++train_config.output_dir=$output_dir \
 ++metric=acc \
@@ -93,9 +93,28 @@ if [[ $use_peft == "true" || $freeze_encoder == false ]];then
 fi
 
 
+# deepspeed \
+#     --num_nodes 1 \
+#     --num_gpus 1 \
+#     $code_dir/finetune_deepspeed.py \
+    # --config-path "conf" \
+    # --config-name "prompt.yaml" \
+    # ++train_config.enable_fsdp=false \
+    # ++train_config.enable_ddp=true \
+    # ++train_config.use_fp16=$use_fp16 \
+    # ++deepspeed_config=$deepspeed_config \
+    # ${hydra_args}
+HOST_FILE="/tmp/"${JobID}                        #生成的hostfile的完整文件名，$JobID调度系统会自动生成
+ 
+echo "${VC_MASTER_HOSTS} slots=${GPU_PER_TASK}" > ${HOST_FILE}
+echo "${VC_WORKER_HOSTS}" | awk -F ',' -v gpu_num=$GPU_PER_TASK '{for (i=1; i<=NF; i++) print $i" slots="gpu_num}' >> ${HOST_FILE}
+
 deepspeed \
-    --num_nodes 1 \
-    --num_gpus 1 \
+    --node_rank=$RANK \
+    --master_addr $MASTER_ADDR \
+    --master_port $MASTER_PORT \
+    --hostfile $HOST_FILE \
+    --no_ssh \
     $code_dir/finetune_deepspeed.py \
     --config-path "conf" \
     --config-name "prompt.yaml" \

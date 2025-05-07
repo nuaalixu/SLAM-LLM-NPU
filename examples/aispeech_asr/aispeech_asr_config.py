@@ -18,7 +18,7 @@ class ConformerConfig:
     num_blocks: int = 16
     output_size: int = 768
     pos_enc_layer_type: str = "rel_pos"
-    positional_dropout_rate: 0.1
+    positional_dropout_rate: float = 0.1
     selfattention_layer_type: str = "rel_selfattn"
     use_cnn_module: bool = True   
 
@@ -33,14 +33,10 @@ class ModelConfig:
     whisper_decode : Optional[bool] = False
     encoder_name: Optional[str] = None
     encoder_config: ConformerConfig = field(default_factory=ConformerConfig)  # or None, use wenet_model_path instead
-    encoder_ds_rate: int = 2
-    encoder_path: Optional[str] = None
-    wenet_model_dir: Optional[str] = None
-    encoder_path_hf: Optional[str] = None
-    encoder_dim: int = 1280
+    encoder_path: Optional[str] = "/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/model/conformer"
+    encoder_dim: int = 768
     encoder_projector: str = "linear"
-    qformer_layers : int = 8
-    encoder_projector_ds_rate: int = 5
+    encoder_projector_ds_rate: int = 2
     modal: str = "audio"
     normalize: Optional[bool] = field(default=False, metadata={
         "help": "whether input is normalized, used for models such as wavlm"
@@ -60,7 +56,17 @@ class PeftConfig:
     task_type: str = "CAUSAL_LM"
     lora_dropout: float = 0.05
     inference_mode: bool = False
-
+@dataclass
+class FbankConfig:
+    num_mel_bins: int = 80  # 梅尔频率滤波器组的滤波器数量为80
+    frame_length: int = 25  # 音频帧的长度为25毫秒
+    frame_shift: int = 10  # 帧移为10毫秒
+    dither: float = 0.001  # 抖动系数为0.001
+    window_type: str = "hamming"  # 使用Povey窗口类型
+    use_energy: bool = False  # 不使用能量特征
+    low_freq:int = 0  # 低频截止频率为0Hz
+    high_freq: int = 8000  # 高频截止频率为8000Hz
+    htk_compat: bool = True  # 尝试使其与HTK兼容
 @dataclass
 class TrainConfig:
     model_name:str = "PATH/to/LLAMA/7B"
@@ -111,12 +117,14 @@ class TrainConfig:
 @dataclass
 class DataConfig:
     dataset: str = "multitask_dataset"
-    train_max_frame_length: int = 1500
-    eval_max_frame_length: int = 1000
+    max_audio_length : int = 30
+    train_max_frame_length: int = 1000
+    ds_rate: int = 8
+    eval_max_frame_length: int = 2000
     multitask_prompt_path: str = "/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/multiprompt.jsonl"
-    prompt_style: str = "\{\}" # 
-    append_info_tasks : List = field(default_factory=lambda: [ "hotword"])
-    file: str = "examples/aispeech_asr/slam_llm/datasets/speech_dataset_large.py:get_speech_dataset"
+    prompt_style: str = "<|im_start|>user\n{}<speech><|im_end|>\n<|im_start|>assistant\n" #    | <|im_start|>user\n{}<speech><|im_end|>\n<|im_start|>assistant\n" | "USER: {}\n ASSISTANT:
+    append_info_tasks : List = field(default_factory=lambda: ["hotword"])
+    file: str = "examples/aispeech_asr/dataset/speech_dataset_large.py:get_speech_dataset"
     train_scp_file_path: str = ""
     dev_scp_file_path: str = ""
     test_scp_file_path: str = ""
@@ -129,6 +137,7 @@ class DataConfig:
     inference_mode: bool = False
     lower: bool = False
     fix_length_audio: int = -1
+    fbankConfig: FbankConfig = field(default_factory=FbankConfig)
     inference_mode:bool = False
     input_type: str = field(default="raw", metadata={
                                 "help":"Use raw when input is wav, mel when for whisper"

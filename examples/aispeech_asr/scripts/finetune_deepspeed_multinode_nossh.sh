@@ -13,23 +13,24 @@ run_dir=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM
 cd $run_dir
 code_dir=examples/aispeech_asr
 
-train_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/aishell-1/asr/train
-dev_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/aishell-1/asr/dev
-train_max_frame_length=1000
+dataset=aishell-1
+task=hotword
+train_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/${dataset}/${task}/train
+dev_scp_file_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/${dataset}/${task}/dev
+train_max_frame_length=1600
 eval_max_frame_length=1000
 multitask_prompt_path="/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/data/multiprompt.jsonl"
 # prompt_style="\{\}\\<speech\\>" # "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n" | "USER: {}\n ASSISTANT:"
 projector=linear
-encoder_name=conformer
 llm_name=Qwen2.5-7B-Instruct
-use_peft=false # For llm
+use_peft=true # For llm
 use_fp16=true
-freeze_encoder=true
+freeze_encoder=false
 # use absolute path
 deepspeed_config=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/conf/ds_config.json
 
-if [[ $use_peft == "true" || $freeze_encoder == false ]];then
-    ckpt_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/project/aispeech_asr/exp/slidespeech/20250414/whisper_linear_Qwen2.5-7B-Instruct_lorafalse_padtrue_normal_asr_speedfalse_specaugfalse-1515_slidespeech_text/mala_asr_epoch_2_step_7000
+if [[ $use_peft == "true"  ]];then
+    ckpt_path=/aistor/aispeech/hpc_stor01/home/fangyangui/workingspace/github/SLAM-LLM-NPU/examples/aispeech_asr/exp/20250502-0908-aishell-1-lorafalse/aispeech_asr_epoch_27_step_100
 fi
 
 # Choose Encoder
@@ -63,7 +64,7 @@ fi
 
 
 
-output_dir=${code_dir}/exp/$(date +"%Y%m%d-%H%M")-$dataset-lora$use_peft
+output_dir=${code_dir}/exp/$(date +"%Y%m%d-%H%M")-$dataset-lora${use_peft}_${task}_instruct
 hydra_args="
 hydra.run.dir=$output_dir \
 ++model_config.llm_path=$llm_path \
@@ -83,19 +84,39 @@ hydra.run.dir=$output_dir \
 ++train_config.freeze_llm=true \
 ++train_config.use_peft=$use_peft \
 ++train_config.batching_strategy=dynamic \
-++train_config.validation_interval=500 \
+++train_config.validation_interval=80 \
 ++train_config.num_workers_dataloader=8 \
 ++train_config.output_dir=$output_dir \
 ++metric=acc \
 "
-if [[ $use_peft == "true" || $freeze_encoder == false ]];then
-    hydra_args+="++ckpt_path=$ckpt_path/model.pt"
+if [[ $use_peft == "true"  ]];then
+    hydra_args+="++ckpt_path=$ckpt_path/pytorch_model.bin"
 fi
 
+# deepspeed \
+#     --num_nodes 1 \
+#     --num_gpus 8 \
+#     $code_dir/finetune_deepspeed.py \
+#     --config-path "conf" \
+#     --config-name "prompt.yaml" \
+#     ++train_config.enable_fsdp=false \
+#     ++train_config.enable_ddp=true \
+#     ++train_config.use_fp16=$use_fp16 \
+#     ++deepspeed_config=$deepspeed_config \
+#     ${hydra_args}
+
+
+HOST_FILE="/tmp/"${JobID}                        #生成的hostfile的完整文件名，$JobID调度系统会自动生成
+ 
+echo "${VC_MASTER_HOSTS} slots=${GPU_PER_TASK}" > ${HOST_FILE}
+echo "${VC_WORKER_HOSTS}" | awk -F ',' -v gpu_num=$GPU_PER_TASK '{for (i=1; i<=NF; i++) print $i" slots="gpu_num}' >> ${HOST_FILE}
 
 deepspeed \
-    --num_nodes 1 \
-    --num_gpus 1 \
+    --node_rank=$RANK \
+    --master_addr $MASTER_ADDR \
+    --master_port $MASTER_PORT \
+    --hostfile $HOST_FILE \
+    --no_ssh \
     $code_dir/finetune_deepspeed.py \
     --config-path "conf" \
     --config-name "prompt.yaml" \

@@ -18,7 +18,24 @@ import torchaudio
 import random
 import logging
 import subprocess
+import torchaudio
+import torchaudio.compliance.kaldi as kaldi
 
+# 加载音频文件
+def extract_fbank(waveform):
+    fbank_features = kaldi.fbank(
+        waveform,
+        num_mel_bins=80,  # 梅尔频率滤波器组的滤波器数量为80
+        frame_length=25,  # 音频帧的长度为25毫秒
+        frame_shift=10,  # 帧移为10毫秒
+        dither=0.001,  # 抖动系数为0.001
+        window_type="povey",  # 使用Povey窗口类型
+        use_energy=False,  # 不使用能量特征
+        low_freq=0,  # 低频截止频率为0Hz
+        high_freq=8000,  # 高频截止频率为8000Hz
+        htk_compat=True  # 尝试使其与HTK兼容
+    )
+    return fbank_features
 
 class MultiTaskDataset(IterableDataset):
     def __init__(self, dataset_config, tokenizer=None, split='train'):
@@ -97,11 +114,15 @@ class MultiTaskDataset(IterableDataset):
                         audio_length = len(audio_raw) // 320 # ad-hoc for fairseq 320x downsample
                         audio_length = audio_length // 5 # ad-hoc for 5x fc downsample
                     elif self.input_type == "mel":
-                        if self.pad_or_trim == True:
-                            audio_raw = whisper.pad_or_trim(audio_raw)
-                        audio_mel = whisper.log_mel_spectrogram(audio_raw, n_mels=self.mel_size).permute(1, 0)
-                        audio_length = (audio_mel.shape[0] + 1) // 2  # ad-hoc for whisper for 2x downsample from mel to feats
-                        audio_length = audio_length // 5 # ad-hoc for 5x fc downsample
+                        # if self.pad_or_trim == True:
+                        #     audio_raw = whisper.pad_or_trim(audio_raw)
+                        # audio_mel = whisper.log_mel_spectrogram(audio_raw, n_mels=self.mel_size).permute(1, 0)
+                        audio_raw = torch.from_numpy(audio_raw).float()
+                        audio_raw = audio_raw.unsqueeze(0)
+                        audio_mel = extract_fbank(audio_raw)
+                        fbank_length = audio_mel.shape[0]
+                        audio_length = (audio_mel.shape[0] + 1) // 4  # ad-hoc for whisper for 2x downsample from mel to feats
+                        audio_length = audio_length // 2 # ad-hoc for 5x fc downsample
                     if self.fix_length_audio > 0:
                         audio_length = self.fix_length_audio
                     audio_pseudo = torch.full((audio_length,), -1) # placeholder
@@ -123,6 +144,7 @@ class MultiTaskDataset(IterableDataset):
                             "audio": audio_raw if self.input_type == "raw" else None,
                             "audio_mel": audio_mel if self.input_type == "mel" else None,
                             'audio_length': audio_length,
+                            'fbank_length' : fbank_length,
                             'key': key,
                             'target': target,
                         }
@@ -150,6 +172,7 @@ class MultiTaskDataset(IterableDataset):
                             "audio": audio_raw if self.input_type == "raw" else None,
                             "audio_mel": audio_mel if self.input_type == "mel" else None,
                             'audio_length': audio_length,
+                            'fbank_length' : fbank_length
                         }
                 data_index += 1      
             
@@ -177,6 +200,7 @@ class MultiTaskDataset(IterableDataset):
 
     def collator(self, samples):
         assert samples is not None
+        fbank_length = torch.stack([torch.tensor(s["fbank_length"]) for s in samples])
         input_ids_max_length = max([s['input_ids'].shape[0] for s in samples])
         input_ids = torch.stack([self.pad(s['input_ids'], input_ids_max_length, self.tokenizer.pad_token_id)
                                     for s in samples])
@@ -214,7 +238,8 @@ class MultiTaskDataset(IterableDataset):
                 "audio_mel_post_mask": audio_mel_post_mask if self.input_type == "mel" else None,
                 "modality_mask": modality_mask,
                 "keys": keys,
-                "targets": targets
+                "targets": targets,
+                "fbank_length" : fbank_length
             }
 
         labels = torch.stack([self.pad(s['labels'], input_ids_max_length, self.IGNORE_INDEX)
@@ -227,7 +252,8 @@ class MultiTaskDataset(IterableDataset):
             "audio_mask": audio_mask if self.input_type == "raw" else None,
             "audio_mel": audio_mel if self.input_type == "mel" else None,
             "audio_mel_post_mask": audio_mel_post_mask if self.input_type == "mel" else None,
-            "modality_mask": modality_mask
+            "modality_mask": modality_mask,
+            "fbank_length":fbank_length
         }
 
 class MultiTaskDynamicBatchDataset(IterableDataset):

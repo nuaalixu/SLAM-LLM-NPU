@@ -296,13 +296,13 @@ class slam_model(nn.Module):
         audio_mel = kwargs.get("audio_mel", None)
         audio_mel_mask = kwargs.get("audio_mel_mask", None)
         audio_mel_post_mask = kwargs.get("audio_mel_post_mask", None) # 2x downsample for whisper
-
+        audio_length = kwargs.get("audio_length", None)
         audio = kwargs.get("audio", None)
         audio_mask = kwargs.get("audio_mask", None)
         visual = kwargs.get("visual", None)
         visual_mask = kwargs.get("visual_mask", None)
         text = kwargs.get("text", None)
-
+        fbank_length = kwargs.get("fbank_length", None)
         # for text encoder
         instruct_ids = kwargs.get("instruct_ids", None)
         instruct_mask = kwargs.get("instruct_mask", None)
@@ -350,6 +350,10 @@ class slam_model(nn.Module):
                 encoder_outs = self.encoder.extract_features(audio, None)['x'] # bs*seq*dim
             if self.encoder is None:
                 encoder_outs = audio_mel if audio_mel is not None else audio
+            if self.model_config.encoder_name == "conformer":
+                encoder_outs,_ = self.encoder(audio_mel,fbank_length) # bs*seq*dim
+            print("before",audio_mel.shape,fbank_length,audio_length,encoder_outs.shape)
+        
 
             if self.model_config.encoder_projector == "q-former":
                 encoder_outs = self.encoder_projector(encoder_outs, audio_mel_post_mask)
@@ -357,7 +361,6 @@ class slam_model(nn.Module):
                 encoder_outs = self.encoder_projector(encoder_outs)
             if self.model_config.encoder_projector == "cov1d-linear": 
                 encoder_outs = self.encoder_projector(encoder_outs) 
-
         if instruct_ids is not None:
             if self.encoder is not None:
                 encoder_outs = self.encoder(input_ids=instruct_ids, attention_mask=instruct_mask).last_hidden_state
@@ -366,7 +369,7 @@ class slam_model(nn.Module):
                 encoder_outs = self.encoder_projector(encoder_outs, instruct_mask)
             if self.model_config.encoder_projector == "linear":
                 encoder_outs = self.encoder_projector(encoder_outs)
-
+        print("output",audio_mel.shape,fbank_length,audio_length,encoder_outs.shape)
         if input_ids is not None:
             input_ids[input_ids == -1] = 0
             if isinstance(self.llm, T5ForConditionalGeneration):

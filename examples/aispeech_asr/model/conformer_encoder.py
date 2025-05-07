@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import LayerNorm
-
+import os
 import math
-
+from slam_llm.utils.train_utils import print_module_size, print_model_size
 from typing import Union, Tuple, Optional
 
 T_CACHE = Tuple[torch.Tensor, torch.Tensor]
@@ -180,7 +180,9 @@ class Conv2dSubsampling4(torch.nn.Module):
         b, c, t, f = x.size()
         x = self.out(x.transpose(1, 2).contiguous().view(b, t, c * f))
         x, pos_emb = self.pos_enc(x, offset)
-        return x, pos_emb, x_mask[:, :, 2::2][:, :, 2::2]
+        x_mask = x_mask[:, :, 2::2][:, :, 2::2]
+        lengths = x_mask[:, -1, :].sum(dim=-1)
+        return x, pos_emb, x_mask,lengths
 
     def position_encoding(self, offset: Union[int, torch.Tensor],
                           size: int) -> torch.Tensor:
@@ -1006,7 +1008,7 @@ class ConformerEncoder(nn.Module):
         T = xs.size(1)
         masks = ~make_pad_mask(xs_lens, T).unsqueeze(1)  # (B, 1, T)
         xs = self.global_cmvn(xs)
-        xs, pos_emb, masks = self.embed(xs, masks)
+        xs, pos_emb, masks,lengths = self.embed(xs, masks)
         mask_pad = masks  # (B, 1, T/subsample_rate)
         chunk_masks = masks  # fake chunk masks
 
@@ -1016,7 +1018,7 @@ class ConformerEncoder(nn.Module):
         # Here we assume the mask is not changed in encoder layers, so just
         # return the masks before encoder layers, and the masks will be used
         # for cross attention with decoder later
-        return xs, masks
+        return xs, masks,lengths
 
     def forward_layers(self, xs: torch.Tensor, chunk_masks: torch.Tensor,
                        pos_emb: torch.Tensor,
@@ -1026,13 +1028,13 @@ class ConformerEncoder(nn.Module):
         return xs
 
     @classmethod
-    def load(cls, model_config):
-        if model_config.wenet_model_dir is not None:
+    def load(cls, train_config,model_config):
+        if model_config.encoder_path is not None:
             import yaml
-            checkpoint = torch.load(model_config.wenet_model_dir + '/model.pt', map_location='cpu')
-            with open(model_config.wenet_model_dir + '/train.yaml', 'r') as fd:
+            checkpoint = torch.load(model_config.encoder_path + '/model.pt', map_location='cpu')
+            with open(model_config.encoder_path + '/train.yaml', 'r') as fd:
                 wenet_config = yaml.safe_load(fd)
-            wenet_config['cmvn_conf']['cmvn_file'] = model_config.wenet_model_dir + '/global_cmvn'
+            wenet_config['cmvn_conf']['cmvn_file'] = model_config.encoder_path + '/global_cmvn'
 
             encoder_ckpt = {}
             for k, v in checkpoint.items():
@@ -1043,12 +1045,17 @@ class ConformerEncoder(nn.Module):
                 **wenet_config['encoder_conf']
             )
             encoder.load_state_dict(encoder_ckpt, strict=True)
-            return encoder
         else:
             from dataclasses import asdict
             encoder_conf = asdict(model_config.encoder_config)
             encoder = cls(**encoder_conf)
-            return encoder            
+        print_module_size(encoder, "conformer", int(os.environ["RANK"]) if train_config.enable_fsdp or train_config.enable_ddp else 0)
+        if train_config.freeze_encoder:
+            for name, param in encoder.named_parameters(): 
+                param.requires_grad = False
+            encoder.eval()
+        print_module_size(encoder, "conformer", int(os.environ["RANK"]) if train_config.enable_fsdp or train_config.enable_ddp else 0)
+        return encoder            
 
 
 def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
